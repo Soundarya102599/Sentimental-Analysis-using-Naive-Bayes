@@ -1,238 +1,115 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[2]:
-
-
-from nltk.corpus import twitter_samples
-
-
-# In[3]:
-
-
-import nltk
-nltk.download('twitter_samples')
-positive_tweets = twitter_samples.strings('positive_tweets.json')
-negative_tweets = twitter_samples.strings('negative_tweets.json')
-text = twitter_samples.strings('tweets.20150430-223406.json')
-
-
-# In[4]:
-
-
-nltk.download('punkt')
-tweet_tokens = twitter_samples.tokenized('positive_tweets.json')
-
-
-# In[5]:
-
-
-print(tweet_tokens[0])
-
-
-# In[6]:
-
-
-nltk.download('wordnet')
-
-
-# In[7]:
-
-
-nltk.download('averaged_perceptron_tagger')
-
-
-# In[8]:
-
-
-from nltk.tag import pos_tag
-from nltk.corpus import twitter_samples
-
-tweet_tokens = twitter_samples.tokenized('positive_tweets.json')
-print(pos_tag(tweet_tokens[0]))
-
-
-# In[9]:
-
-
-from nltk.tag import pos_tag
-from nltk.stem.wordnet import WordNetLemmatizer
-
-def lemmatize_sentence(tokens):
-    lemmatizer = WordNetLemmatizer()
-    lemmatized_sentence = []
-    for word, tag in pos_tag(tokens):
-        if tag.startswith('NN'):
-            pos = 'n'
-        elif tag.startswith('VB'):
-            pos = 'v'
-        else:
-            pos = 'a'
-        lemmatized_sentence.append(lemmatizer.lemmatize(word, pos))
-    return lemmatized_sentence
-
-print(lemmatize_sentence(tweet_tokens[0]))
-
-
-# In[10]:
-
-
-...
-
-import re, string
-
-def remove_noise(tweet_tokens, stop_words = ()):
-
-    cleaned_tokens = []
-
-    for token, tag in pos_tag(tweet_tokens):
-        token = re.sub('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+#]|[!*\(\),]|'                       '(?:%[0-9a-fA-F][0-9a-fA-F]))+','', token)
-        token = re.sub("(@[A-Za-z0-9_]+)","", token)
-
-        if tag.startswith("NN"):
-            pos = 'n'
-        elif tag.startswith('VB'):
-            pos = 'v'
-        else:
-            pos = 'a'
-
-        lemmatizer = WordNetLemmatizer()
-        token = lemmatizer.lemmatize(token, pos)
-
-        if len(token) > 0 and token not in string.punctuation and token.lower() not in stop_words:
-            cleaned_tokens.append(token.lower())
-    return cleaned_tokens
-
-
-# In[11]:
-
-
-nltk.download('stopwords')
-
-
-# In[12]:
-
-
-...
-from nltk.corpus import stopwords
-stop_words = stopwords.words('english')
-
-print(remove_noise(tweet_tokens[0], stop_words))
-
-
-# In[13]:
-
-
-from nltk.corpus import stopwords
-stop_words = stopwords.words('english')
-
-#print(remove_noise(tweet_tokens[0], stop_words))
-
-positive_tweet_tokens = twitter_samples.tokenized('positive_tweets.json')
-negative_tweet_tokens = twitter_samples.tokenized('negative_tweets.json')
-
-positive_cleaned_tokens_list = []
-negative_cleaned_tokens_list = []
-
-for tokens in positive_tweet_tokens:
-    positive_cleaned_tokens_list.append(remove_noise(tokens, stop_words))
-
-for tokens in negative_tweet_tokens:
-    negative_cleaned_tokens_list.append(remove_noise(tokens, stop_words))
-
-
-# In[14]:
-
-
-print(positive_tweet_tokens[500])
-print(positive_cleaned_tokens_list[500])
-
-
-# In[15]:
-
-
-def get_all_words(cleaned_tokens_list):
-    for tokens in cleaned_tokens_list:
-        for token in tokens:
-            yield token
-
-all_pos_words = get_all_words(positive_cleaned_tokens_list)
-
-
-# In[16]:
-
-
-from nltk import FreqDist
-
-freq_dist_pos = FreqDist(all_pos_words)
-print(freq_dist_pos.most_common(10))
-
-
-# In[17]:
-
-
-def get_tweets_for_model(cleaned_tokens_list):
-    for tweet_tokens in cleaned_tokens_list:
-        yield dict([token, True] for token in tweet_tokens)
-
-positive_tokens_for_model = get_tweets_for_model(positive_cleaned_tokens_list)
-negative_tokens_for_model = get_tweets_for_model(negative_cleaned_tokens_list)
-
-
-# In[18]:
-
-
-import random
-
-positive_dataset = [(tweet_dict, "Positive")
-                     for tweet_dict in positive_tokens_for_model]
-
-negative_dataset = [(tweet_dict, "Negative")
-                     for tweet_dict in negative_tokens_for_model]
-
-dataset = positive_dataset + negative_dataset
-
-random.shuffle(dataset)
-
-train_data = dataset[:7000]
-test_data = dataset[7000:]
-
-
-# In[19]:
-
-
-from nltk import classify
-from nltk import NaiveBayesClassifier
-classifier = NaiveBayesClassifier.train(train_data)
-
-print("Accuracy is:", classify.accuracy(classifier, test_data))
-
-print(classifier.show_most_informative_features(10))
-
-
-# In[25]:
-
-
-from nltk.tokenize import word_tokenize
-
-custom_tweet ="very aggressive"
-
-custom_tokens = remove_noise(word_tokenize(custom_tweet))
-
-print(classifier.classify(dict([token, True] for token in custom_tokens)))
-
-
-# In[24]:
-
-
-custom_tweet = 'all time favourite '
-custom_tokens = remove_noise(word_tokenize(custom_tweet))
-
-print(classifier.classify(dict([token, True] for token in custom_tokens)))
-
-
-# In[ ]:
-
-
-
-
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from transformers import BertTokenizer, BertForSequenceClassification, AdamW
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+import pandas as pd
+
+# Load and preprocess dataset
+df = pd.read_csv("sentiment_data.csv")  # Replace "sentiment_data.csv" with your dataset file
+sentences = df['text'].values
+labels = df['label'].values
+
+# Split dataset into train, validation, and test sets
+train_texts, test_texts, train_labels, test_labels = train_test_split(sentences, labels, test_size=0.2, random_state=42)
+train_texts, val_texts, train_labels, val_labels = train_test_split(train_texts, train_labels, test_size=0.1, random_state=42)
+
+# Tokenize texts
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+train_encodings = tokenizer(train_texts.tolist(), truncation=True, padding=True)
+val_encodings = tokenizer(val_texts.tolist(), truncation=True, padding=True)
+test_encodings = tokenizer(test_texts.tolist(), truncation=True, padding=True)
+
+# Convert to PyTorch tensors
+train_dataset = TensorDataset(torch.tensor(train_encodings['input_ids']),
+                              torch.tensor(train_encodings['attention_mask']),
+                              torch.tensor(train_labels))
+val_dataset = TensorDataset(torch.tensor(val_encodings['input_ids']),
+                            torch.tensor(val_encodings['attention_mask']),
+                            torch.tensor(val_labels))
+test_dataset = TensorDataset(torch.tensor(test_encodings['input_ids']),
+                             torch.tensor(test_encodings['attention_mask']),
+                             torch.tensor(test_labels))
+
+# Define DataLoader
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False)
+test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False)
+
+# Load pre-trained BERT model
+model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=3)  # 3 classes: positive, negative, neutral
+
+# Define optimizer and learning rate scheduler
+optimizer = AdamW(model.parameters(), lr=5e-5)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.1)
+
+# Training loop
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model.to(device)
+for epoch in range(3):  # 3 epochs for demonstration
+    model.train()
+    for batch in train_loader:
+        input_ids, attention_mask, labels = tuple(t.to(device) for t in batch)
+        optimizer.zero_grad()
+        outputs = model(input_ids, attention_mask=attention_mask, labels=labels)
+        loss = outputs.loss
+        loss.backward()
+        optimizer.step()
+    scheduler.step()
+
+# Evaluation
+model.eval()
+val_preds = []
+val_labels = []
+for batch in val_loader:
+    input_ids, attention_mask, labels = tuple(t.to(device) for t in batch)
+    with torch.no_grad():
+        outputs = model(input_ids, attention_mask=attention_mask)
+    logits = outputs.logits
+    val_preds.extend(torch.argmax(logits, dim=1).tolist())
+    val_labels.extend(labels.tolist())
+
+# Calculate accuracy on validation set
+val_accuracy = accuracy_score(val_labels, val_preds)
+print("Validation Accuracy:", val_accuracy)
+
+# Test
+test_preds = []
+test_labels = []
+for batch in test_loader:
+    input_ids, attention_mask, labels = tuple(t.to(device) for t in batch)
+    with torch.no_grad():
+        outputs = model(input_ids, attention_mask=attention_mask)
+    logits = outputs.logits
+    test_preds.extend(torch.argmax(logits, dim=1).tolist())
+    test_labels.extend(labels.tolist())
+
+# Calculate accuracy on test set
+test_accuracy = accuracy_score(test_labels, test_preds)
+print("Test Accuracy:", test_accuracy)
+import torch
+from transformers import BertTokenizer, BertForSequenceClassification
+
+# Load pre-trained BERT model and tokenizer
+model_name = 'bert-base-uncased'
+tokenizer = BertTokenizer.from_pretrained(model_name)
+model = BertForSequenceClassification.from_pretrained(model_name, num_labels=3)  # 3 classes: positive, negative, neutral
+
+# Load the trained model weights
+model.load_state_dict(torch.load("bert_sentiment_model.pth"))  # Replace "bert_sentiment_model.pth" with your trained model file
+
+# Function for real-time prediction
+def predict_sentiment(input_text):
+    inputs = tokenizer(input_text, return_tensors="pt", truncation=True, padding=True)
+    with torch.no_grad():
+        outputs = model(**inputs)
+    logits = outputs.logits
+    predicted_label = torch.argmax(logits, dim=1).item()
+    sentiment_labels = {0: "negative", 1: "neutral", 2: "positive"}
+    predicted_sentiment = sentiment_labels[predicted_label]
+    return predicted_sentiment
+
+# Example usage
+input_text = "I loved the movie, it was fantastic!"
+predicted_sentiment = predict_sentiment(input_text)
+print("Predicted sentiment:", predicted_sentiment)
